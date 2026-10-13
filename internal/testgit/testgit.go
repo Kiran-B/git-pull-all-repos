@@ -90,3 +90,10 @@ func Clone(t *testing.T, bareDir, dest string) {
 	t.Helper()
 	Git(t, filepath.Dir(dest), "clone", bareDir, dest)
 }
+
+// GitFile is like Git but allows the file:// protocol, which git blocks by
+// default for submodules.
+func GitFile(t testing.TB, dir string, args ...string) string {
+	t.Helper()
+	return Git(t, dir, append([]string{"-c", "protocol.file.allow=always"}, args...)...)
+}

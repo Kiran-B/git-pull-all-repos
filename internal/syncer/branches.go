@@ -130,5 +130,6 @@ func (s *Syncer) updateFeature(ctx context.Context, t Target, branch string, det
 		res.Warnings = append(res.Warnings, w)
 		return res
 	}
+	res.Warnings = append(res.Warnings, s.updateSubmodules(ctx, t.Dir)...)
 	return finish(rebased)
 }

@@ -25,6 +25,9 @@ func (s *Syncer) Sync(ctx context.Context, t Target) (res Result) {
 	}
 
 	if _, err := os.Stat(t.Dir); os.IsNotExist(err) {
+		if s.DryRun {
+			return Result{Name: t.Name, Action: WouldClone}
+		}
 		return s.clone(ctx, t)
 	}
 	if !s.Git.IsRepo(t.Dir) {
@@ -34,6 +37,10 @@ func (s *Syncer) Sync(ctx context.Context, t Target) (res Result) {
 	url, _ := s.Git.OriginURL(ctx, t.Dir)
 	if !s.originMatches(url, t.Name) {
 		return skipped(t, fmt.Sprintf("origin points to %s, not this repo", url))
+	}
+
+	if s.DryRun {
+		return s.dryRun(ctx, t)
 	}
 
 	if _, err := s.Git.RunNet(ctx, t.Dir, "fetch", "--prune", "--tags", "--force", "origin"); err != nil {
@@ -90,10 +97,51 @@ func (s *Syncer) updateDefault(ctx context.Context, t Target) Result {
 	if w != "" {
 		return fetchedOnly(t, w)
 	}
+	res := Result{Name: t.Name, Action: UpToDate}
 	if moved {
-		return Result{Name: t.Name, Action: Updated}
+		res.Action = Updated
 	}
-	return Result{Name: t.Name, Action: UpToDate}
+	res.Warnings = s.updateSubmodules(ctx, t.Dir)
+	return res
+}
+
+// updateSubmodules brings submodules to the commits recorded by the checked-out
+// branch. A failure is only a warning.
+func (s *Syncer) updateSubmodules(ctx context.Context, dir string) []string {
+	if !s.Submodules {
+		return nil
+	}
+	if _, err := s.Git.RunNet(ctx, dir, "submodule", "update", "--init", "--recursive"); err != nil {
+		return []string{fmt.Sprintf("submodule update failed: %v", err)}
+	}
+	return nil
+}
+
+// dryRun reports what a real run would do, using read-only git queries only.
+func (s *Syncer) dryRun(ctx context.Context, t Target) Result {
+	dir := t.Dir
+	res := Result{Name: t.Name, Action: WouldUpdate}
+	if s.Git.OperationInProgress(dir) {
+		res.Warnings = append(res.Warnings, "rebase/merge in progress, fetched only")
+		return res
+	}
+	dirty, err := s.Git.HasTrackedChanges(ctx, dir)
+	if err != nil {
+		return Result{Name: t.Name, Action: Failed, Err: err}
+	}
+	if dirty {
+		res.Warnings = append(res.Warnings, "uncommitted changes, would fetch only")
+	}
+	branch, detached, err := s.Git.CurrentBranch(ctx, dir)
+	if err != nil {
+		return Result{Name: t.Name, Action: Failed, Err: err}
+	}
+	if detached {
+		res.Warnings = append(res.Warnings, "detached HEAD; default would be fast-forwarded")
+	} else if branch != t.DefaultBranch {
+		res.Warnings = append(res.Warnings, fmt.Sprintf("on branch %s; default would be fast-forwarded", branch))
+	}
+	return res
 }
 
 // blocked reports (with a warning) whether the working tree state prevents a rebase.
