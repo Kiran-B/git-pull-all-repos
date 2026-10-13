@@ -131,23 +131,26 @@ func (g *Git) OperationInProgress(dir string) bool {
 	return false
 }
 
+// LocalDefaultBranch returns the branch refs/remotes/origin/HEAD points to,
+// without touching the network. It errors if origin/HEAD is not set.
+func (g *Git) LocalDefaultBranch(ctx context.Context, dir string) (string, error) {
+	out, err := g.Run(ctx, dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimPrefix(out, "origin/"), nil
+}
+
 // DefaultBranchFromOrigin returns the branch origin/HEAD points to. If it is
 // not set, it runs `remote set-head origin --auto` once and retries.
 func (g *Git) DefaultBranchFromOrigin(ctx context.Context, dir string) (string, error) {
-	read := func() (string, error) {
-		out, err := g.Run(ctx, dir, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
-		if err != nil {
-			return "", err
-		}
-		return strings.TrimPrefix(out, "origin/"), nil
-	}
-	if b, err := read(); err == nil {
+	if b, err := g.LocalDefaultBranch(ctx, dir); err == nil {
 		return b, nil
 	}
 	if _, err := g.RunNet(ctx, dir, "remote", "set-head", "origin", "--auto"); err != nil {
 		return "", err
 	}
-	return read()
+	return g.LocalDefaultBranch(ctx, dir)
 }
 
 // Upstream returns the upstream ref of branch ("" if none) and whether it is gone.

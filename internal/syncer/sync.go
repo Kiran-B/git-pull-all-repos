@@ -34,17 +34,34 @@ func (s *Syncer) Sync(ctx context.Context, t Target) (res Result) {
 		return skipped(t, "folder exists but is not a git repository")
 	}
 
-	url, _ := s.Git.OriginURL(ctx, t.Dir)
-	if !s.originMatches(url, t.Name) {
+	url, err := s.Git.OriginURL(ctx, t.Dir)
+	if err != nil || url == "" {
+		return skipped(t, "no origin remote")
+	}
+	if !s.originMatches(url, t) {
 		return skipped(t, fmt.Sprintf("origin points to %s, not this repo", url))
 	}
 
 	if s.DryRun {
+		if t.DefaultBranch == "" {
+			b, err := s.Git.LocalDefaultBranch(ctx, t.Dir)
+			if err != nil {
+				return Result{Name: t.Name, Action: WouldUpdate, Warnings: []string{"default branch unknown (origin/HEAD not set)"}}
+			}
+			t.DefaultBranch = b
+		}
 		return s.dryRun(ctx, t)
 	}
 
 	if _, err := s.Git.RunNet(ctx, t.Dir, "fetch", "--prune", "--tags", "--force", "origin"); err != nil {
 		return Result{Name: t.Name, Action: Failed, Err: err}
+	}
+	if t.DefaultBranch == "" {
+		b, err := s.Git.DefaultBranchFromOrigin(ctx, t.Dir)
+		if err != nil {
+			return Result{Name: t.Name, Action: Failed, Err: err}
+		}
+		t.DefaultBranch = b
 	}
 
 	branch, detached, err := s.Git.CurrentBranch(ctx, t.Dir)
@@ -69,8 +86,18 @@ func fetchedOnly(t Target, warning string) Result {
 	return Result{Name: t.Name, Action: FetchedOnly, Warnings: []string{warning}}
 }
 
-// originMatches is a stub; Task 7 replaces it with a real origin comparison.
-func (s *Syncer) originMatches(url, name string) bool { return true }
+// originMatches reports whether url belongs to this repo (or, for discovered
+// clones, just to the org).
+func (s *Syncer) originMatches(url string, t Target) bool {
+	host := s.Git.Host
+	if host == "" {
+		host = "github.com"
+	}
+	if t.Discovered {
+		return originOwnerMatches(url, host, s.Org)
+	}
+	return OriginMatches(url, host, s.Org, t.Name)
+}
 
 func (s *Syncer) clone(ctx context.Context, t Target) Result {
 	args := []string{"clone"}

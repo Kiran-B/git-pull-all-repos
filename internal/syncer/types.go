@@ -21,6 +21,7 @@ const (
 type Target struct {
 	Name, Dir, CloneURL, DefaultBranch string
 	IsEmpty                            bool
+	Discovered                         bool // found on disk, not listed from GitHub: origin is checked by owner only
 }
 
 // Result is the outcome of syncing one repository.
