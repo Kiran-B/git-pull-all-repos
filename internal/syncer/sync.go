@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Sync clones or updates one repository. It never panics and always returns
@@ -16,6 +17,9 @@ func (s *Syncer) Sync(ctx context.Context, t Target) (res Result) {
 		}
 	}()
 
+	if ctx.Err() != nil {
+		return skipped(t, "interrupted, not started")
+	}
 	if t.IsEmpty {
 		return skipped(t, "empty repository")
 	}
@@ -40,10 +44,14 @@ func (s *Syncer) Sync(ctx context.Context, t Target) (res Result) {
 	if err != nil {
 		return Result{Name: t.Name, Action: Failed, Err: err}
 	}
+	warnings := s.cleanupGone(ctx, t.Dir, branch)
 	if detached || branch != t.DefaultBranch {
-		return s.offDefaultBranch(t, branch, detached)
+		res = s.updateFeature(ctx, t, branch, detached)
+	} else {
+		res = s.updateDefault(ctx, t)
 	}
-	return s.updateDefault(ctx, t)
+	res.Warnings = append(warnings, res.Warnings...)
+	return res
 }
 
 func skipped(t Target, warning string) Result {
@@ -69,43 +77,61 @@ func (s *Syncer) clone(ctx context.Context, t Target) Result {
 	return Result{Name: t.Name, Action: Cloned}
 }
 
-// offDefaultBranch handles a repo that is detached or on a non-default branch.
-// Task 5 replaces this with the feature-branch path.
-func (s *Syncer) offDefaultBranch(t Target, branch string, detached bool) Result {
-	if detached {
-		return fetchedOnly(t, "detached HEAD, fetched only")
-	}
-	return fetchedOnly(t, fmt.Sprintf("on branch %s, fetched only", branch))
-}
-
 func (s *Syncer) updateDefault(ctx context.Context, t Target) Result {
-	if s.Git.OperationInProgress(t.Dir) {
-		return fetchedOnly(t, "rebase/merge in progress, fetched only")
+	if w, blocked, err := s.blocked(ctx, t.Dir); err != nil {
+		return Result{Name: t.Name, Action: Failed, Err: err}
+	} else if blocked {
+		return fetchedOnly(t, w)
 	}
-	dirty, err := s.Git.HasTrackedChanges(ctx, t.Dir)
+	moved, w, err := s.rebaseOnto(ctx, t.Dir, "origin/"+t.DefaultBranch)
 	if err != nil {
 		return Result{Name: t.Name, Action: Failed, Err: err}
 	}
-	if dirty {
-		return fetchedOnly(t, "uncommitted changes, fetched only")
+	if w != "" {
+		return fetchedOnly(t, w)
 	}
-
-	before, err := s.Git.RevParse(ctx, t.Dir, "HEAD")
-	if err != nil {
-		return Result{Name: t.Name, Action: Failed, Err: err}
-	}
-	if _, err := s.Git.Run(ctx, t.Dir, "rebase", "origin/"+t.DefaultBranch); err != nil {
-		if _, abortErr := s.Git.Run(ctx, t.Dir, "rebase", "--abort"); abortErr != nil {
-			return Result{Name: t.Name, Action: Failed, Err: fmt.Errorf("%w; abort failed: %w", err, abortErr)}
-		}
-		return fetchedOnly(t, "rebase conflict, left unchanged")
-	}
-	after, err := s.Git.RevParse(ctx, t.Dir, "HEAD")
-	if err != nil {
-		return Result{Name: t.Name, Action: Failed, Err: err}
-	}
-	if after != before {
+	if moved {
 		return Result{Name: t.Name, Action: Updated}
 	}
 	return Result{Name: t.Name, Action: UpToDate}
+}
+
+// blocked reports (with a warning) whether the working tree state prevents a rebase.
+func (s *Syncer) blocked(ctx context.Context, dir string) (warning string, blocked bool, err error) {
+	if s.Git.OperationInProgress(dir) {
+		return "rebase/merge in progress, fetched only", true, nil
+	}
+	dirty, err := s.Git.HasTrackedChanges(ctx, dir)
+	if err != nil {
+		return "", false, err
+	}
+	if dirty {
+		return "uncommitted changes, fetched only", true, nil
+	}
+	return "", false, nil
+}
+
+// rebaseOnto rebases the current branch onto upstream. A non-empty warning
+// means the repo was left unchanged; err is set only if cleanup failed or git
+// state could not be read.
+func (s *Syncer) rebaseOnto(ctx context.Context, dir, upstream string) (moved bool, warning string, err error) {
+	before, err := s.Git.RevParse(ctx, dir, "HEAD")
+	if err != nil {
+		return false, "", err
+	}
+	if _, rerr := s.Git.Run(ctx, dir, "rebase", upstream); rerr != nil {
+		if !s.Git.OperationInProgress(dir) {
+			first, _, _ := strings.Cut(rerr.Error(), "\n")
+			return false, "rebase failed, left unchanged: " + first, nil
+		}
+		if _, abortErr := s.Git.Run(context.WithoutCancel(ctx), dir, "rebase", "--abort"); abortErr != nil {
+			return false, "", fmt.Errorf("%w; abort failed: %w", rerr, abortErr)
+		}
+		return false, "rebase conflict, left unchanged", nil
+	}
+	after, err := s.Git.RevParse(ctx, dir, "HEAD")
+	if err != nil {
+		return false, "", err
+	}
+	return after != before, "", nil
 }

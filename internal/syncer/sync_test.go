@@ -173,12 +173,23 @@ func TestSync_LocalCommitsRebased(t *testing.T) {
 	}
 }
 
-func TestSync_NotOnDefaultBranchFetchesOnly(t *testing.T) {
+func TestSync_UntrackedCollisionLeftUnchanged(t *testing.T) {
 	s, tg, bare := setup(t)
 	cloneIt(t, bare, tg.Dir)
-	testgit.Git(t, tg.Dir, "checkout", "-b", "feature")
+	write(t, tg.Dir, "new.txt", "mine\n")
+	testgit.Commit(t, bare, "main", "new.txt", "theirs\n")
+	before := testgit.Git(t, tg.Dir, "rev-parse", "HEAD")
 	r := s.Sync(context.Background(), tg)
-	if r.Action != FetchedOnly || len(r.Warnings) != 1 || r.Warnings[0] != "on branch feature, fetched only" {
+	if r.Action != FetchedOnly || r.Err != nil || len(r.Warnings) != 1 || !strings.HasPrefix(r.Warnings[0], "rebase failed, left unchanged: ") {
 		t.Fatalf("got %+v", r)
+	}
+	if s.Git.OperationInProgress(tg.Dir) {
+		t.Fatal("operation in progress")
+	}
+	if got := testgit.Git(t, tg.Dir, "rev-parse", "HEAD"); got != before {
+		t.Fatal("HEAD changed")
+	}
+	if b, _ := os.ReadFile(filepath.Join(tg.Dir, "new.txt")); string(b) != "mine\n" {
+		t.Fatalf("untracked file changed: %q", b)
 	}
 }
