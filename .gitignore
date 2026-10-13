@@ -1,0 +1,29 @@
+# Built binary
+/git-pull-all-repos
+
+# GoReleaser
+dist/
+
+# Go test and coverage artifacts
+*.test
+*.out
+coverage.*
+
+# Go workspace files
+go.work
+go.work.sum
+
+# macOS junk
+.DS_Store
+._*
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+
+# Environment files
+.env*
+
+# Local Claude settings
+.claude/settings.local.json
