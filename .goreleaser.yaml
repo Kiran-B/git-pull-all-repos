@@ -27,10 +27,14 @@ checksum:
 
 homebrew_casks:
   - name: git-pull-all-repos
+    # The cask lives in this repo, so it doubles as its own Homebrew tap.
     repository:
       owner: Kiran-B
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+      name: git-pull-all-repos
+      branch: main
+      token: "{{ .Env.GITHUB_TOKEN }}"
+    directory: Casks
+    commit_msg_template: "chore: update cask to {{ .Tag }}"
     homepage: https://github.com/Kiran-B/git-pull-all-repos
     description: "CLI that clones every repo in a GitHub org you can access and keeps them up to date on re-runs, without touching your uncommitted work."
     binaries:

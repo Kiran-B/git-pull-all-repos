@@ -9,8 +9,11 @@ routine with a single command.
 
 ## Install
 
+This repo is its own Homebrew tap:
+
 ```bash
-brew install Kiran-B/tap/git-pull-all-repos
+brew tap Kiran-B/git-pull-all-repos https://github.com/Kiran-B/git-pull-all-repos
+brew install Kiran-B/git-pull-all-repos/git-pull-all-repos
 ```
 
 The Homebrew cask is macOS only. On Linux, download the tarball from the
@@ -94,19 +97,12 @@ warning and failure.
 
 ## Releasing
 
-One-time setup:
-
-1. Create the `Kiran-B/homebrew-tap` repository on GitHub.
-2. Create a token with write access to that repo and add it to this repo as the
-   Actions secret `HOMEBREW_TAP_GITHUB_TOKEN`.
-
-Then, for each release:
-
 ```bash
 git tag vX.Y.Z && git push --tags
 ```
 
 The `release` workflow runs the tests, builds darwin/linux binaries for amd64
-and arm64 with GoReleaser, publishes the GitHub release and updates the cask in
-the tap. The binary isn't signed or notarized, so the cask removes the macOS
+and arm64 with GoReleaser, publishes the GitHub release and commits the updated
+cask to `Casks/` on `main` (so `git pull` after a release). No extra secrets are
+needed. The binary isn't signed or notarized, so the cask removes the macOS
 quarantine flag after install to keep Gatekeeper from blocking it.

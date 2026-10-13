@@ -54,8 +54,8 @@ loop's rough edges (e.g. leaving a repo stuck mid-rebase after a failed pull).
 ### Language & distribution
 - **Go**, single static binary.
 - **GoReleaser** builds macOS (arm64, amd64) and Linux binaries on each git tag
-  via GitHub Actions, and updates a Homebrew tap repo in the user's GitHub
-  account, so `brew install <user>/tap/git-pull-all-repos` works.
+  via GitHub Actions, and commits the Homebrew cask to `Casks/` in this same
+  repo, which doubles as the tap (user decision: no separate tap repo).
 
 ### Invocation
 
@@ -230,10 +230,9 @@ These are my defaults; the user did not weigh in on them.
 - **Homebrew cask** doesn't declare `gh`/`git` dependencies (the user said
   they're assumed present); a caveat line mentions them.
 - **GitHub identity:** user is `Kiran-B`. Go module path
-  `github.com/Kiran-B/git-pull-all-repos`; tap repo `Kiran-B/homebrew-tap`
-  (does **not** exist yet — creating it is a public action and needs the
-  user's go-ahead at release time). Install line:
-  `brew install Kiran-B/tap/git-pull-all-repos`.
+  `github.com/Kiran-B/git-pull-all-repos`. The repo is its own tap; install:
+  `brew tap Kiran-B/git-pull-all-repos https://github.com/Kiran-B/git-pull-all-repos`
+  then `brew install Kiran-B/git-pull-all-repos/git-pull-all-repos`.
 - **Formula vs cask:** GoReleaser v2 deprecates `brews` (formulae) in favour
   of `homebrew_casks`. Use a **cask** with a post-install hook that strips the
   quarantine attribute (`xattr -dr com.apple.quarantine`), so the unsigned
