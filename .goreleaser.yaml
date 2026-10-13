@@ -1,0 +1,46 @@
+version: 2
+
+project_name: git-pull-all-repos
+
+builds:
+  - main: .
+    binary: git-pull-all-repos
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - formats: [tar.gz]
+    files:
+      - README.md
+
+release:
+  github:
+    owner: Kiran-B
+    name: git-pull-all-repos
+
+checksum:
+  name_template: checksums.txt
+
+homebrew_casks:
+  - name: git-pull-all-repos
+    repository:
+      owner: Kiran-B
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    homepage: https://github.com/Kiran-B/git-pull-all-repos
+    description: "CLI that clones every repo in a GitHub org you can access and keeps them up to date on re-runs, without touching your uncommitted work."
+    binaries:
+      - git-pull-all-repos
+    caveats: |
+      Requires `gh` (authenticated via `gh auth login`) and `git` on your PATH.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+                           args: ["-dr", "com.apple.quarantine", "#{staged_path}/git-pull-all-repos"]
+          end
